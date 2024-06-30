@@ -9,46 +9,23 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+import static dev.backend.wakuwaku.global.exception.WakuWakuException.DUPLICATED_EMAIL;
+import static dev.backend.wakuwaku.global.exception.WakuWakuException.NONE_USER;
+
 @Service
 @RequiredArgsConstructor
 @Transactional
 public class MemberService {
     private final MemberRepository memberRepository;
 
-    /*
-    회원가입
-     */
-    public Long register(Member memberEntity) {
-        // 중복 검사 로직
-        validateDuplicateMember(memberEntity);
-        memberRepository.save(memberEntity);
-
-        return memberEntity.getId();
-    }
-
-    private void validateDuplicateMember(Member member) {
-        memberRepository.findByMemberId(member.getMemberId())
+    protected void validateDuplicateMember(Member member) {
+        memberRepository.findByEmail(member.getEmail())
                 .ifPresent(m -> {
-                    throw new IllegalStateException();
+                    if (!m.getCheckStatus().equals("N")) {
+                        throw DUPLICATED_EMAIL;
+                    }
                 });
     }
-
-    /*
-    로그인
-     */
-    public Long login(String memberId, String password) {
-        Member memberEntity = memberRepository.findByMemberId(memberId)
-                .orElseThrow(
-                        () -> new IllegalStateException()
-                );
-
-        if (!memberEntity.getMemberPassword().equals(password)) {
-            throw new IllegalStateException();
-        }
-
-        return memberEntity.getId();
-    }
-
 
     /*
     회원 리스트
@@ -63,7 +40,7 @@ public class MemberService {
     public Member findById(Long id) {
         return memberRepository.findById(id)
                 .orElseThrow(
-                        () -> new IllegalStateException()
+                        () -> NONE_USER
                 );
     }
 
@@ -71,24 +48,26 @@ public class MemberService {
     회원 정보 수정
      */
     public Long update(Long id, MemberUpdateRequest memberUpdateRequest) {
-        Member memberEntity = memberRepository.findById(id)
-                .orElseThrow(
-                        () -> new IllegalStateException()
-                );
+        Member member = memberRepository.findById(id)
+                .orElseThrow(() -> NONE_USER); // 예외 처리 추가
 
-        memberEntity.setMemberPassword(memberUpdateRequest.getMemberPassword());
-        memberEntity.setMemberName(memberUpdateRequest.getMemberName());
+        member.updateNickname(memberUpdateRequest.getNickname());
+        member.updateProfileImageUrl(memberUpdateRequest.getProfileImageUrl());
+        member.updateBirthday(memberUpdateRequest.getBirthday());
 
-        memberRepository.save(memberEntity);
+        memberRepository.save(member);
 
-        // id;
-        return memberEntity.getId();
+        return member.getId();
     }
+
 
     /*
     회원 탈퇴
      */
-    public void deleteById(Long id) {
-        memberRepository.deleteById(id);
+    public void deactivateById(Long id) {
+        Member member = memberRepository.findById(id).orElseThrow(() -> NONE_USER);
+        // checkStatus : Y -> N
+        member.deactivate();
+        memberRepository.save(member);
     }
 }

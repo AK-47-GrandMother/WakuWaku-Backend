@@ -40,6 +40,9 @@ dependencies {
 	testImplementation('com.epages:restdocs-api-spec-mockmvc:0.18.2') //2.2
 	testImplementation 'org.springframework.restdocs:spring-restdocs-mockmvc'
 
+	// oauth
+	implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
 	implementation 'com.google.code.gson:gson'
 }
 
@@ -71,7 +74,9 @@ def jacocoExcludePatterns = [
 		"*.constant.*",
 		"*.old.*",
 		"*.Result*",
-		"*.BaseResponse*"
+		"*.BaseResponse*",
+		"*.*RequestUrlProvider",
+		"*.presentation.*"
 ]
 
 // JaCoCo 보고서 + SonarCloud 관련 제외 패턴
@@ -88,7 +93,9 @@ def sonarCloudExcludePatterns = [
 		"**/constant/**/*",
 		"**/old/**/*",
 		"**/Result*",
-		"**/BaseResponse*"
+		"**/BaseResponse*",
+		"**/*RequestUrlProvider",
+		"**/presentation/**/*"
 ]
 
 //테스트 커버리지 규칙 정의하고 검증

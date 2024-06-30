@@ -3,138 +3,190 @@ package dev.backend.wakuwaku.domain.member.service;
 import dev.backend.wakuwaku.domain.member.dto.request.MemberUpdateRequest;
 import dev.backend.wakuwaku.domain.member.entity.Member;
 import dev.backend.wakuwaku.domain.member.repository.MemberRepository;
+import dev.backend.wakuwaku.global.exception.ExceptionStatus;
+import dev.backend.wakuwaku.global.exception.WakuWakuException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.mockito.Mockito.*;
-public class MemberServiceTest {
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
+
+@ExtendWith(MockitoExtension.class)
+class MemberServiceTest {
+
     @Mock
     private MemberRepository memberRepository;
+
     @InjectMocks
     private MemberService memberService;
 
+    private Member member;
 
     @BeforeEach
     void setUp() {
-        MockitoAnnotations.initMocks(this);
+        member = Member.builder()
+                .email("test@example.com")
+                .nickname("testUser")
+                .profileImageUrl("https://example.com/profile.jpg")
+                .birthday("1990-01-01")
+                .build();
     }
 
     @Test
-    @DisplayName("회원 가입 서비스")
-    void testRegister() {
-        // 테스트에 필요한 MemberEntity 생성
-        Member memberEntity = new Member();
-        memberEntity.setMemberId("testMember");
-        // 중복 회원이 없는 상황 가정
-        when(memberRepository.findByMemberId(anyString())).thenReturn(Optional.empty());
-        // 저장된 MemberEntity의 아이디를 반환하도록 설정
-        when(memberRepository.save(any())).thenAnswer(invocation -> {
-            Member savedMember = invocation.getArgument(0);
-            savedMember.setId(1L); // 임의의 아이디 설정
-            return savedMember;
-        });
-        // register 메서드 호출 및 반환 값 받기
-        Long memberId = memberService.register(memberEntity);
-        // 반환된 memberId가 null이 아닌지 확인
-        assertNotNull(memberId);
-        // memberRepository의 메서드가 호출되었는지 확인
-        verify(memberRepository, times(1)).findByMemberId(anyString());
-        verify(memberRepository, times(1)).save(any(Member.class));
+    @DisplayName("중복되는 이메일이 존재하는 경우 - 실패")
+    void validateDuplicateMember_DuplicateEmail() {
+        // given
+        String email = "test@example.com";
+        Member existingMember = new Member();
+        existingMember.createEmail(email);
+        existingMember.createCheckstatus("Y"); // "Y"로 설정하여 중복 상황을 시뮬레이트
+        given(memberRepository.findByEmail(email)).willReturn(Optional.of(existingMember));
+
+        // when & then
+        assertThatThrownBy(() -> memberService.validateDuplicateMember(existingMember))
+                .isInstanceOf(WakuWakuException.class)
+                .extracting("status")
+                .isEqualTo(ExceptionStatus.DUPLICATED_EMAIL);
+
+        // Optional: memberRepository의 findByEmail 메서드가 한 번 호출되었는지 확인
+        // 실제 로직에서는 메서드가 호출됨을 보장하기 위해 추가적인 검증 가능
     }
 
     @Test
-    @DisplayName("회원 로그인 서비스")
-    void testLogin() {
-        String memberId = "testMember";
-        String password = "password";
+    @DisplayName("중복되는 이메일이 존재하지 않는 경우 - 성공")
+    void validateDuplicateMember_NonDuplicateEmail() {
+        // given
+        String email = "test@example.com";
+        Member newMember = new Member();
+        newMember.createEmail(email);
+        newMember.createCheckstatus("N"); // "N"으로 설정하여 중복 상황을 회피
+        given(memberRepository.findByEmail(email)).willReturn(Optional.empty());
 
+        // when & then
+        memberService.validateDuplicateMember(newMember); // 예외가 발생하지 않아야 함
+
+        // Optional: memberRepository의 findByEmail 메서드가 한 번 호출되었는지 확인
+        // 실제 로직에서는 메서드가 호출됨을 보장하기 위해 추가적인 검증 가능
+    }
+    @Test
+    @DisplayName("모든 회원 조회 - 성공")
+    void findAll() {
+        // given
+        given(memberRepository.findAll()).willReturn(List.of(member));
+
+        // when
+        List<Member> allMembers = memberService.findAll();
+
+        // then
+        assertThat(allMembers).hasSize(1);
+        assertThat(allMembers.get(0)).isEqualTo(member);
+        then(memberRepository).should().findAll();
+    }
+
+    @Test
+    @DisplayName("ID로 회원 조회 - 성공")
+    void findById() {
+        // given
+        member.createId(1L);
+        given(memberRepository.findById(1L)).willReturn(Optional.of(member));
+
+        // when
+        Member foundMember = memberService.findById(1L);
+
+        // then
+        assertThat(foundMember).isEqualTo(member);
+        then(memberRepository).should().findById(1L);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 ID로 회원 조회할 때 예외 발생")
+    void findByIdNonExistingId() {
+        // given
+        given(memberRepository.findById(anyLong())).willReturn(Optional.empty());
+
+        // when, then
+        assertThatThrownBy(() -> memberService.findById(1L))
+                .isInstanceOf(WakuWakuException.class)
+                .extracting("status")
+                .isEqualTo(ExceptionStatus.NONE_USER);
+        then(memberRepository).should().findById(1L);
+    }
+
+    @Test
+    @DisplayName("회원 정보 수정 - 성공")
+    void update() {
+        // given
+        MemberUpdateRequest updateRequest = new MemberUpdateRequest("newNickname", "newProfileUrl", "1991-01-01");
+
+        member.createId(1L);
+        given(memberRepository.findById(1L)).willReturn(Optional.of(member));
+
+        // Configure save method to update the member and return it
+        given(memberRepository.save(any(Member.class)))
+                .willAnswer(invocation -> {
+                    Member updatedMember = invocation.getArgument(0);
+                    return updatedMember;
+                });
+
+        // when
+        Long updatedMemberId = memberService.update(1L, updateRequest);
+
+        // then
+        assertThat(updatedMemberId).isEqualTo(1L);
+        assertThat(member.getNickname()).isEqualTo(updateRequest.getNickname());
+        assertThat(member.getProfileImageUrl()).isEqualTo(updateRequest.getProfileImageUrl());
+        assertThat(member.getBirthday()).isEqualTo(updateRequest.getBirthday());
+        then(memberRepository).should().findById(1L);
+        then(memberRepository).should().save(any(Member.class)); // Verify save method called with any Member
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 ID로 회원 정보 수정할 때 예외 발생")
+    void updateNonExistingMember() {
+        // given
+        MemberUpdateRequest updateRequest = new MemberUpdateRequest("newNickname", "newProfileUrl", "1991-01-01");
+        given(memberRepository.findById(1L)).willReturn(Optional.empty());
+
+        // when / then
+        assertThatThrownBy(() -> memberService.update(1L, updateRequest))
+                .isInstanceOf(WakuWakuException.class)
+                .hasFieldOrPropertyWithValue("status", ExceptionStatus.NONE_USER);
+
+        then(memberRepository).should().findById(1L);
+        then(memberRepository).should(never()).save(any(Member.class));
+    }
+
+    @Test
+    @DisplayName("회원 비활성화 - 성공")
+    void deactivateById() {
+        // given
+        Long memberId = 1L;
         Member member = new Member();
-        member.setMemberId(memberId);
-        member.setMemberPassword(password);
-        member.setId(1L);
+        member.createId(memberId);
+        member.createCheckstatus("Y");
 
-        when(memberRepository.findByMemberId(anyString())).thenReturn(Optional.of(member));
+        given(memberRepository.findById(memberId)).willReturn(Optional.of(member));
 
-        Long foundId = memberService.login(memberId, password);
+        // when
+        memberService.deactivateById(memberId);
 
-        assertNotNull(foundId);
-        verify(memberRepository, times(1)).findByMemberId(anyString());
+        // then
+        then(memberRepository).should().findById(memberId);
+        assertThat(member.getCheckStatus()).isEqualTo("N");
+        then(memberRepository).should().save(member);
     }
-    @Test
-    @DisplayName("회원 가입 서비스")
-    void testFindAll() {
-        List<Member> memberList = new ArrayList<>();
 
-        when(memberRepository.findAll()).thenReturn(memberList);
-
-        List<Member> foundMembers = memberService.findAll();
-
-        assertNotNull(foundMembers);
-        assertEquals(memberList, foundMembers);
-
-        verify(memberRepository, times(1)).findAll();
-    }
-    @Test
-    @DisplayName("회원 검색 서비스")
-    void testFindById() {
-        Long id = 1L;
-
-        Member memberEntity = new Member();
-
-        memberEntity.setId(id);
-
-        when(memberRepository.findById(anyLong())).thenReturn(Optional.of(memberEntity));
-
-        Member foundMember = memberService.findById(id);
-        assertNotNull(foundMember);
-        assertEquals(id, foundMember.getId());
-
-        verify(memberRepository, times(1)).findById(anyLong());
-    }
-    @Test
-    @DisplayName("회원 정보 수정 서비스")
-    void testUpdate() {
-        Long id = 1L;
-        MemberUpdateRequest updateRequest = new MemberUpdateRequest();
-
-        updateRequest.setMemberPassword("newPassword");
-        updateRequest.setMemberName("New Name");
-
-        Member memberEntity = new Member();
-
-        memberEntity.setId(id);
-        memberEntity.setMemberPassword("oldPassword");
-        memberEntity.setMemberName("Old Name");
-
-        when(memberRepository.findById(anyLong())).thenReturn(Optional.of(memberEntity));
-        when(memberRepository.save(any())).thenReturn(memberEntity);
-
-        Long updatedId = memberService.update(id, updateRequest);
-
-        assertNotNull(updatedId);
-
-        assertEquals(id, updatedId);
-        assertEquals(updateRequest.getMemberPassword(), memberEntity.getMemberPassword());
-        assertEquals(updateRequest.getMemberName(), memberEntity.getMemberName());
-
-        verify(memberRepository, times(1)).findById(anyLong());
-        verify(memberRepository, times(1)).save(any(Member.class));
-    }
-    @Test
-    @DisplayName("회원 탈퇴 서비스")
-    void testDeleteById() {
-        Long id = 1L;
-        memberService.deleteById(id);
-        verify(memberRepository, times(1)).deleteById(anyLong());
-    }
 }

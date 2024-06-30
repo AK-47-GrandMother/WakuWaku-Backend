@@ -21,4 +21,8 @@ public class WakuWakuException extends RuntimeException {
     public static final WakuWakuException NOT_EXISTED_DETAILS_RESPONSE  = new WakuWakuException(ExceptionStatus.NOT_EXISTED_DETAILS_RESPONSE);
     public static final WakuWakuException NONE_PHOTO_URL                = new WakuWakuException(ExceptionStatus.NONE_PHOTO_URL);
 
+    public static final WakuWakuException FAILED_TO_LOGIN                = new WakuWakuException(ExceptionStatus.FALIED_TO_LOGIN);
+
+    public static final WakuWakuException NOT_EXISTED_SOCIAL_TYPE                = new WakuWakuException(ExceptionStatus.NOT_EXISTED_SOCIAL_TYPE);
+
 }

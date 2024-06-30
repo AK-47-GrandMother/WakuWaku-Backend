@@ -1,21 +1,27 @@
 package dev.backend.wakuwaku.domain.member.controller;
 
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-import dev.backend.wakuwaku.domain.member.dto.request.MemberRegisterRequest;
+import com.epages.restdocs.apispec.MockMvcRestDocumentationWrapper;
+import com.epages.restdocs.apispec.ResourceSnippetParameters;
 import dev.backend.wakuwaku.domain.member.dto.request.MemberUpdateRequest;
 import dev.backend.wakuwaku.domain.member.entity.Member;
 import dev.backend.wakuwaku.domain.member.service.MemberService;
+import dev.backend.wakuwaku.domain.oauth.dto.OauthServerType;
+import dev.backend.wakuwaku.domain.oauth.dto.Role;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentMatchers;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.restdocs.RestDocumentationContextProvider;
+import org.springframework.restdocs.RestDocumentationExtension;
+import org.springframework.restdocs.mockmvc.RestDocumentationRequestBuilders;
+import org.springframework.restdocs.payload.JsonFieldType;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
-import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
+import org.springframework.test.web.servlet.result.MockMvcResultHandlers;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.filter.CharacterEncodingFilter;
@@ -23,122 +29,176 @@ import org.springframework.web.filter.CharacterEncodingFilter;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.mockito.Mockito.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static com.epages.restdocs.apispec.ResourceDocumentation.parameterWithName;
+import static com.epages.restdocs.apispec.ResourceDocumentation.resource;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.documentationConfiguration;
+import static org.springframework.restdocs.payload.PayloadDocumentation.fieldWithPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-//@SpringBootTest
-//@AutoConfigureMockMvc
-// 웹 관련 테스트만 실행 (test속도 up)
+@ExtendWith(RestDocumentationExtension.class)
 @WebMvcTest(controllers = MemberController.class)
-public class MemberControllerTest {
-    @Autowired
-    private WebApplicationContext wac;
+class MemberControllerTest {
 
-    // 메서드 실행할 때, 각각 실행됨.
-    @BeforeEach
-    void setUp() {
-        this.mockMvc = MockMvcBuilders
-                .webAppContextSetup(wac) // MockMvc 인스턴스를 생성하며, 웹 애플리케이션 컨텍스트를 설정한다. 이를 통해 컨트롤러와 같은 웹 계층의 컴포넌트를 테스트할 수 있다.
-                .addFilter(new CharacterEncodingFilter("UTF-8", true)) // 요청과 응답에 대한 문자 인코딩 필터를 추가한다. 이 필터는 UTF-8 인코딩을 사용하며, 모든 요청에 대해 적용된다.
-                .alwaysDo(print()) // 모든 요청/응답을 콘솔에 출력한다.
-                .build(); // 설정된 내용을 바탕으로 MockMvc 인스턴스를 생성한다.
-    }
-
-    //@Autowired
-    private MockMvc mockMvc;
-    @Autowired
-    private ObjectMapper objectMapper;
-    //가짜 memberService 등록
     @MockBean
     private MemberService memberService;
-    private final String URL_PATH = "/wakuwaku/v1/members";
 
-    @Test
-    @DisplayName("회원 가입")
-    public void testRegister() throws Exception {
-        MemberRegisterRequest registerRequest = new MemberRegisterRequest();
-        // 아이디, 비밀번호 설정 - 테스트
-        registerRequest.setMemberId("testMemberId");
-        registerRequest.setMemberPassword("testMemberPassword");
-        // save 엔드포인트에 post요청 보냄
-        mockMvc.perform(MockMvcRequestBuilders.post(URL_PATH + "/save")
-                        // json 문자열로 변환
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(registerRequest)))
-                // 상태코드 201인지 확인
-                .andExpect(MockMvcResultMatchers.status().isCreated())
-                // 응답 id 필드 존재하는지 확인
-                .andExpect(MockMvcResultMatchers.jsonPath("$.id").exists());
+    @Autowired
+    private MockMvc mockMvc;
+
+    private static final String BASE_URL = "/wakuwaku/v1/members";
+
+    private Member member;
+
+    @BeforeEach
+    void setUp(WebApplicationContext context, RestDocumentationContextProvider restDocumentation) {
+        this.mockMvc = MockMvcBuilders.webAppContextSetup(context)
+                .apply(documentationConfiguration(restDocumentation))
+                .alwaysDo(MockMvcResultHandlers.print())
+                .addFilters(new CharacterEncodingFilter("UTF-8", true))
+                .build();
+
+        member = Member.builder()
+                .oauthServerId("oauth-id")
+                .oauthServerType(OauthServerType.GOOGLE)
+                .email("test@example.com")
+                .birthday("1990-01-01")
+                .nickname("nickname")
+                .profileImageUrl("http://example.com/profile.jpg")
+                .role(Role.USER)
+                .build();
     }
 
     @Test
-    @DisplayName("회원 아이디 검색")
-    public void testFindById() throws Exception {
-        Member memberEntity = new Member();
-        memberEntity.setId(1L);
-        memberEntity.setMemberId("testMember");
-        // memberService.findById() 메서드 호출 -> 반환값 설정
-        when(memberService.findById(1L)).thenReturn(memberEntity);
-        // GET 요청으로 해당 엔드포인트에 접근하여 테스트 수행
-        mockMvc.perform(get(URL_PATH + "/1"))
+    @DisplayName("회원 ID로 조회 테스트")
+    void findById() throws Exception {
+        // given
+        given(memberService.findById(1L)).willReturn(member);
+
+        // when & then
+        mockMvc.perform(RestDocumentationRequestBuilders.get(BASE_URL + "/{id}", 1L))
                 .andExpect(status().isOk())
-                // 반환된 JSON에서 memberId 필드의 값 확인
-                .andExpect(jsonPath("$.memberId").value("testMember"))
-                // 반환된 JSON에서 memberEmail 필드가 존재하지 않음을 확인
-                .andExpect(jsonPath("$.memberEmail").doesNotExist())
-                // 반환된 JSON에서 memberName 필드가 존재하지 않음을 확인
-                .andExpect(jsonPath("$.memberName").doesNotExist());
+                .andExpect(jsonPath("$.code").value(1000))  // 응답 코드 추가
+                .andExpect(jsonPath("$.message").value("요청에 성공하였습니다."))  // 응답 메시지 추가
+                .andExpect(jsonPath("$.data.email").value(member.getEmail()))
+                .andExpect(jsonPath("$.data.nickname").value(member.getNickname()))
+                .andDo(MockMvcRestDocumentationWrapper.document("get-member-by-id",
+                        resource(ResourceSnippetParameters.builder()
+                                .tag("Member")
+                                .description("회원 ID로 회원 정보를 조회합니다.")
+                                .pathParameters(parameterWithName("id").description("회원 ID"))
+                                .responseFields(
+                                        fieldWithPath("code").type(JsonFieldType.NUMBER).description("응답 코드"),
+                                        fieldWithPath("message").type(JsonFieldType.STRING).description("응답 메시지"),
+                                        fieldWithPath("data.email").type(JsonFieldType.STRING).description("회원 이메일"),
+                                        fieldWithPath("data.oauthServerId").type(JsonFieldType.STRING).description("OAuth 서버 ID"),
+                                        fieldWithPath("data.oauthServerType").type(JsonFieldType.STRING).description("OAuth 서버 타입"),
+                                        fieldWithPath("data.birthday").type(JsonFieldType.STRING).description("회원 생일"),
+                                        fieldWithPath("data.profileImageUrl").type(JsonFieldType.STRING).description("회원 프로필 이미지 URL"),
+                                        fieldWithPath("data.nickname").type(JsonFieldType.STRING).description("회원 닉네임"),
+                                        fieldWithPath("data.role").type(JsonFieldType.STRING).description("회원 역할")
+                                )
+                                .build()
+                        )
+                ));
+
+        then(memberService).should().findById(1L);
     }
 
     @Test
-    @DisplayName("회원 정보 수정")
-    public void testUpdate() throws Exception {
-        Long id = 1L;
-        // 업데이트할 회원의 ID와 새로운 비밀번호 및 이름 생성
-        String newPassword = "newPassword123";
-        String newName = "newName123";
-        // PUT 요청에 사용할 MemberUpdateRequest 객체 생성
-        MemberUpdateRequest memberUpdateRequest = new MemberUpdateRequest();
-        memberUpdateRequest.setMemberPassword(newPassword);
-        memberUpdateRequest.setMemberName(newName);
-        // memberService.findById() 메서드 호출 -> 반환값 설정
-        when(memberService.update(id, memberUpdateRequest)).thenReturn(id);
-        // PUT 요청으로 해당 엔드포인트에 회원 정보 업데이트 요청을 보냄
-        mockMvc.perform(MockMvcRequestBuilders.put(URL_PATH + "/{id}", id)
+    @DisplayName("회원 정보 업데이트 테스트")
+    void update() throws Exception {
+        // given
+        MemberUpdateRequest updateRequest = new MemberUpdateRequest("newNickname", "http://example.com/new-profile.jpg", "1991-01-01");
+        given(memberService.update(ArgumentMatchers.eq(1L), ArgumentMatchers.any(MemberUpdateRequest.class))).willReturn(1L);
+
+        // when & then
+        mockMvc.perform(RestDocumentationRequestBuilders.put(BASE_URL + "/{id}", 1L)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(memberUpdateRequest)))
-                .andExpect(MockMvcResultMatchers.status().isOk())
-                // 업데이트된 회원 엔터티의 내용을 확인하기 위해 반환된 JSON의 필드와 값 확인
-                .andExpect(jsonPath("$.id").exists());
-    }
-
-    @Test
-    @DisplayName("회원 정보 삭제")
-    public void testDelete() throws Exception {
-        Long memberIdToDelete = 1L;
-        // 가짜 MemberService가 deleteById 메소드가 호출되면 아무것도 하지 않도록 설정
-        doNothing().when(memberService).deleteById(memberIdToDelete);
-        // DELETE 요청을 보내어 해당 엔드포인트에 대한 테스트 수행
-        mockMvc.perform(delete(URL_PATH + "/{id}", memberIdToDelete))
-                .andExpect(status().isOk());
-        // MemberService의 deleteById 메소드가 한 번 호출되었는지 검증
-        verify(memberService, times(1)).deleteById(memberIdToDelete);
-    }
-
-    @Test
-    @DisplayName("회원 리스트")
-    public void testFindAll() throws Exception {
-        // 가짜 MemberService가 findAll 메소드 호출 시 빈 리스트 반환하도록 설정
-        List<Member> mockMemberList = new ArrayList<>();
-        when(memberService.findAll()).thenReturn(mockMemberList);
-        // GET 요청을 보내어 해당 엔드포인트에 대한 테스트 수행
-        mockMvc.perform(get(URL_PATH + "/list"))
+                        .content("{ \"nickname\": \"newNickname\", \"profileImageUrl\": \"http://example.com/new-profile.jpg\", \"birthday\": \"1991-01-01\" }"))
                 .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON_UTF8))
-                .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$").isEmpty());
+                .andExpect(jsonPath("$.code").value(1000))  // 응답 코드 추가
+                .andExpect(jsonPath("$.message").value("요청에 성공하였습니다."))  // 응답 메시지 추가
+                .andExpect(jsonPath("$.data.id").value(1L))
+                .andDo(MockMvcRestDocumentationWrapper.document("update-member",
+                        resource(ResourceSnippetParameters.builder()
+                                .tag("Member")
+                                .description("회원 정보를 업데이트합니다.")
+                                .pathParameters(parameterWithName("id").description("회원 ID"))
+                                .requestFields(
+                                        fieldWithPath("nickname").type(JsonFieldType.STRING).description("새로운 닉네임"),
+                                        fieldWithPath("profileImageUrl").type(JsonFieldType.STRING).description("새로운 프로필 이미지 URL"),
+                                        fieldWithPath("birthday").type(JsonFieldType.STRING).description("새로운 생일")
+                                )
+                                .responseFields(
+                                        fieldWithPath("code").type(JsonFieldType.NUMBER).description("응답 코드"),
+                                        fieldWithPath("message").type(JsonFieldType.STRING).description("응답 메시지"),
+                                        fieldWithPath("data.id").type(JsonFieldType.NUMBER).description("회원 ID")
+                                ).build()
+                        )
+                ));
+
+        then(memberService).should().update(ArgumentMatchers.eq(1L), ArgumentMatchers.any(MemberUpdateRequest.class));
+    }
+
+    @Test
+    @DisplayName("회원 삭제 테스트")
+    void delete() throws Exception {
+        // given
+        Long memberId = 1L;
+
+        // when & then
+        mockMvc.perform(RestDocumentationRequestBuilders.delete(BASE_URL + "/{id}", memberId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(1000))  // 응답 코드 추가
+                .andExpect(jsonPath("$.message").value("요청에 성공하였습니다."))  // 응답 메시지 추가
+                .andDo(MockMvcRestDocumentationWrapper.document("delete-member",
+                        resource(ResourceSnippetParameters.builder()
+                                .tag("Member")
+                                .description("회원 정보를 삭제합니다.")
+                                .pathParameters(parameterWithName("id").description("회원 ID"))
+                                .build()
+                        )
+                ));
+
+        then(memberService).should().deactivateById(memberId);
+    }
+
+    @Test
+    @DisplayName("회원 목록 조회 테스트")
+    void findAll() throws Exception {
+        // given
+        List<Member> members = new ArrayList<>();
+        members.add(member);
+        given(memberService.findAll()).willReturn(members);
+
+        // when & then
+        mockMvc.perform(RestDocumentationRequestBuilders.get(BASE_URL + "/list"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(1000))  // 응답 코드 추가
+                .andExpect(jsonPath("$.message").value("요청에 성공하였습니다."))  // 응답 메시지 추가
+                .andExpect(jsonPath("$.data[0].email").value(member.getEmail()))
+                .andExpect(jsonPath("$.data[0].nickname").value(member.getNickname()))
+                .andDo(MockMvcRestDocumentationWrapper.document("get-member-list",
+                        resource(ResourceSnippetParameters.builder()
+                                .tag("Member")
+                                .description("회원 목록을 조회합니다.")
+                                .responseFields(
+                                        fieldWithPath("code").type(JsonFieldType.NUMBER).description("응답 코드"),
+                                        fieldWithPath("message").type(JsonFieldType.STRING).description("응답 메시지"),
+                                        fieldWithPath("data[].email").type(JsonFieldType.STRING).description("회원 이메일"),
+                                        fieldWithPath("data[].oauthServerId").type(JsonFieldType.STRING).description("OAuth 서버 ID"),
+                                        fieldWithPath("data[].oauthServerType").type(JsonFieldType.STRING).description("OAuth 서버 타입"),
+                                        fieldWithPath("data[].birthday").type(JsonFieldType.STRING).description("회원 생일"),
+                                        fieldWithPath("data[].profileImageUrl").type(JsonFieldType.STRING).description("회원 프로필 이미지 URL"),
+                                        fieldWithPath("data[].nickname").type(JsonFieldType.STRING).description("회원 닉네임"),
+                                        fieldWithPath("data[].role").type(JsonFieldType.STRING).description("회원 역할")
+                                ).build()
+                        )
+                ));
+
+        then(memberService).should().findAll();
     }
 }
